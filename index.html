@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sanitize — Strip secrets from your configs</title>
+<meta name="description" content="Paste your Frigate or Home Assistant config. Get back a redacted version safe to share. Runs entirely in your browser. Nothing is sent or stored.">
+<style>
+  :root {
+    --bg: #0d0f0e;
+    --bg-elevated: #15181a;
+    --bg-input: #0a0c0b;
+    --bg-diff-removed: #2a1414;
+    --bg-diff-added: #102a1a;
+    --bg-line-num: #0f1213;
+    --border: #2a2f33;
+    --border-bright: #3a4147;
+    --text: #d4dde2;
+    --text-dim: #7a858e;
+    --text-bright: #ffffff;
+    --accent: #4ade80;
+    --accent-dim: #16a34a;
+    --danger: #f87171;
+    --danger-dim: #5c1f1f;
+    --warning: #fbbf24;
+    --mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+    --serif: 'Newsreader', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+    --code-size: 13px;
+    --code-line-height: 1.6;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(74, 222, 128, 0.04) 0%, transparent 50%),
+      radial-gradient(circle at 80% 100%, rgba(74, 222, 128, 0.03) 0%, transparent 50%);
+    background-attachment: fixed;
+  }
+
+  .container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .brand { display: flex; flex-direction: column; gap: 4px; }
+
+  .brand-title {
+    font-family: var(--serif);
+    font-size: 38px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--text-bright);
+    line-height: 1;
+  }
+
+  .brand-title::before {
+    content: "$ ";
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 28px;
+  }
+
+  .brand-tagline {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 8px;
+  }
+
+  .header-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .status-line { display: flex; align-items: center; gap: 8px; }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .font-control { display: flex; align-items: center; gap: 6px; }
+
+  .font-control-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 4px;
+  }
+
+  .font-btn {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .font-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .font-btn:active { transform: translateY(1px); }
+  .font-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .font-btn:disabled:hover { border-color: var(--border-bright); color: var(--text); }
+
+  .font-size-display {
+    font-size: 11px;
+    color: var(--text);
+    min-width: 36px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .trust-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+
+  .trust-item {
+    background: var(--bg-elevated);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+  }
+
+  .trust-icon { color: var(--accent); font-weight: bold; }
+  .trust-label { color: var(--text-dim); }
+  .trust-value { color: var(--text); margin-left: auto; font-weight: 500; }
+  .trust-value.ok { color: var(--accent); }
+
+  .input-panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-input);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .panel-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-title .marker { color: var(--accent); }
+
+  .panel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .btn {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 12px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+  }
+
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { border-color: var(--accent); color: var(--accent); }
+  .btn.primary:hover { background: var(--accent); color: var(--bg); }
+  .btn.copied { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+  textarea {
+    width: 100%;
+    background: var(--bg-input);
+    border: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: var(--code-size);
+    line-height: var(--code-line-height);
+    padding: 16px;
+    resize: vertical;
+    outline: none;
+    overflow: auto;
+    white-space: pre;
+    tab-size: 2;
+    min-height: 280px;
+    display: block;
+  }
+
+  textarea::placeholder { color: var(--text-dim); opacity: 0.6; }
+
+  /* DIFF VIEW */
+  .diff-panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+
+  .diff-toolbar {
+    padding: 8px 12px;
+    background: var(--bg-input);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .diff-stat {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: auto;
+  }
+
+  .diff-stat strong { color: var(--text); font-weight: 600; }
+  .diff-stat .changed { color: var(--warning); }
+  .diff-stat .clean { color: var(--accent); }
+
+  .diff-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--bg-input);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diff-side-label {
+    padding: 10px 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .diff-side-label.left { border-right: 1px solid var(--border); }
+  .diff-side-label .badge-original { color: var(--danger); font-weight: bold; }
+  .diff-side-label .badge-sanitized { color: var(--accent); font-weight: bold; }
+
+  .diff-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    max-height: 70vh;
+    overflow: auto;
+    background: var(--bg-input);
+  }
+
+  .diff-side {
+    font-family: var(--mono);
+    font-size: var(--code-size);
+    line-height: var(--code-line-height);
+    min-width: 0;
+  }
+
+  .diff-side.left { border-right: 1px solid var(--border); }
+
+  .diff-line {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+  }
+
+  .diff-line-num {
+    background: var(--bg-line-num);
+    color: var(--text-dim);
+    text-align: right;
+    padding: 0 8px;
+    font-size: calc(var(--code-size) - 1px);
+    user-select: none;
+    border-right: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+    line-height: var(--code-line-height);
+  }
+
+  .diff-line-content {
+    padding: 0 12px;
+    white-space: pre;
+    overflow-x: auto;
+    line-height: var(--code-line-height);
+  }
+
+  .diff-line.changed.left { background: var(--bg-diff-removed); }
+  .diff-line.changed.left .diff-line-num {
+    background: rgba(248, 113, 113, 0.12);
+    color: var(--danger);
+    border-right-color: var(--danger-dim);
+  }
+
+  .diff-line.changed.right { background: var(--bg-diff-added); }
+  .diff-line.changed.right .diff-line-num {
+    background: rgba(74, 222, 128, 0.1);
+    color: var(--accent);
+    border-right-color: var(--accent-dim);
+  }
+
+  .diff-line .secret {
+    background: rgba(248, 113, 113, 0.25);
+    color: var(--danger);
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+
+  .diff-line .redacted {
+    background: rgba(74, 222, 128, 0.18);
+    color: var(--accent);
+    border-radius: 2px;
+    padding: 0 2px;
+    font-weight: 500;
+  }
+
+  .diff-empty {
+    padding: 32px;
+    text-align: center;
+    color: var(--text-dim);
+    font-style: italic;
+    grid-column: 1 / -1;
+  }
+
+  /* STATUS PANEL */
+  .status-panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+
+  .status-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-input);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+
+  .status-body { padding: 16px; }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px dashed var(--border);
+  }
+
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--text-dim); }
+  .stat-value { color: var(--text); font-weight: 500; }
+  .stat-value.warn { color: var(--warning); }
+  .stat-value.danger { color: var(--danger); }
+  .stat-value.ok { color: var(--accent); }
+
+  .findings-list {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .finding {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .finding-count { color: var(--danger); font-weight: 600; min-width: 24px; }
+  .finding-name { flex: 1; color: var(--text); }
+
+  /* TRUST SECTION */
+  .trust-section {
+    margin-top: 48px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+  }
+
+  .trust-section h2 {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 400;
+    margin-bottom: 24px;
+    color: var(--text-bright);
+  }
+
+  .trust-section h2::before {
+    content: "// ";
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 22px;
+  }
+
+  .trust-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+  }
+
+  .trust-card { background: var(--bg-elevated); padding: 24px; }
+
+  .trust-card h3 {
+    font-size: 13px;
+    color: var(--accent);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .trust-card p {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    line-height: 1.7;
+  }
+
+  .trust-card code {
+    display: block;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--accent);
+    margin-top: 8px;
+    overflow-x: auto;
+  }
+
+  footer {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  footer a {
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--border-bright);
+    transition: color 0.15s;
+  }
+
+  footer a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* DROPDOWN */
+  .dropdown {
+    position: relative;
+    display: inline-block;
+  }
+
+  .dropdown-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-bright);
+    min-width: 180px;
+    z-index: 50;
+    display: none;
+    flex-direction: column;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+
+  .dropdown.open .dropdown-menu {
+    display: flex;
+  }
+
+  .dropdown-item {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 14px;
+    cursor: pointer;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    transition: all 0.1s;
+  }
+
+  .dropdown-item:last-child {
+    border-bottom: none;
+  }
+
+  .dropdown-item:hover {
+    background: var(--bg-input);
+    color: var(--accent);
+  }
+
+  @media (max-width: 900px) {
+    .trust-bar { grid-template-columns: 1fr 1fr; }
+    .brand-title { font-size: 30px; }
+    .brand-title::before { font-size: 22px; }
+    .header-meta { align-items: flex-start; }
+    header { align-items: flex-start; }
+  }
+
+  @media (max-width: 720px) {
+    .diff-header { display: none; }
+    .diff-body { grid-template-columns: 1fr; max-height: none; }
+    .diff-side.left { border-right: none; border-bottom: 1px solid var(--border); }
+    .diff-side.left::before {
+      content: "− ORIGINAL";
+      display: block;
+      padding: 8px 12px;
+      background: var(--bg-input);
+      border-bottom: 1px solid var(--border);
+      color: var(--danger);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    .diff-side.right::before {
+      content: "+ SANITIZED";
+      display: block;
+      padding: 8px 12px;
+      background: var(--bg-input);
+      border-bottom: 1px solid var(--border);
+      color: var(--accent);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+  }
+
+  @media (max-width: 540px) {
+    .container { padding: 20px 16px 40px; }
+    .trust-bar { grid-template-columns: 1fr; }
+    .panel-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .panel-actions { width: 100%; }
+  }
+
+  ::selection { background: var(--accent); color: var(--bg); }
+
+  textarea::-webkit-scrollbar,
+  .diff-body::-webkit-scrollbar,
+  .diff-line-content::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  textarea::-webkit-scrollbar-track,
+  .diff-body::-webkit-scrollbar-track,
+  .diff-line-content::-webkit-scrollbar-track {
+    background: var(--bg-input);
+  }
+  textarea::-webkit-scrollbar-thumb,
+  .diff-body::-webkit-scrollbar-thumb,
+  .diff-line-content::-webkit-scrollbar-thumb {
+    background: var(--border-bright);
+  }
+  textarea::-webkit-scrollbar-thumb:hover,
+  .diff-body::-webkit-scrollbar-thumb:hover,
+  .diff-line-content::-webkit-scrollbar-thumb:hover {
+    background: var(--text-dim);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="brand">
+      <div class="brand-title">sanitize</div>
+      <div class="brand-tagline">Strip secrets from configs · 100% local</div>
+    </div>
+    <div class="header-meta">
+      <div class="status-line">
+        <span class="status-dot"></span>
+        <span>Running locally · No network</span>
+      </div>
+      <div id="netRequests">Network requests since load: <span id="reqCount">0</span></div>
+      <div class="font-control">
+        <span class="font-control-label">Font</span>
+        <button class="font-btn" id="fontDecrease" aria-label="Decrease font size" title="Decrease (Ctrl+-)">−</button>
+        <span class="font-size-display" id="fontSizeDisplay">13px</span>
+        <button class="font-btn" id="fontIncrease" aria-label="Increase font size" title="Increase (Ctrl++)">+</button>
+        <button class="font-btn" id="fontReset" aria-label="Reset font size" title="Reset (Ctrl+0)">⟲</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="trust-bar">
+    <div class="trust-item">
+      <span class="trust-icon">▸</span>
+      <span class="trust-label">Storage</span>
+      <span class="trust-value ok">None</span>
+    </div>
+    <div class="trust-item">
+      <span class="trust-icon">▸</span>
+      <span class="trust-label">Tracking</span>
+      <span class="trust-value ok">None</span>
+    </div>
+    <div class="trust-item">
+      <span class="trust-icon">▸</span>
+      <span class="trust-label">Backend</span>
+      <span class="trust-value ok">None</span>
+    </div>
+    <div class="trust-item">
+      <span class="trust-icon">▸</span>
+      <span class="trust-label">Source</span>
+      <span class="trust-value ok">Open</span>
+    </div>
+  </div>
+
+  <div class="input-panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <span class="marker">●</span>
+        <span>INPUT — paste your config</span>
+      </div>
+      <div class="panel-actions">
+        <div class="dropdown">
+          <button class="btn dropdown-toggle" id="samplesBtn">Load sample ▾</button>
+          <div class="dropdown-menu" id="samplesMenu">
+            <button class="dropdown-item" data-sample="frigate">Frigate</button>
+            <button class="dropdown-item" data-sample="homeAssistant">Home Assistant</button>
+            <button class="dropdown-item" data-sample="dockerCompose">Docker Compose</button>
+            <button class="dropdown-item" data-sample="envFile">.env file</button>
+            <button class="dropdown-item" data-sample="proxmox">Proxmox</button>
+            <button class="dropdown-item" data-sample="wireguard">WireGuard</button>
+            <button class="dropdown-item" data-sample="zigbee2mqtt">Zigbee2MQTT</button>
+            <button class="dropdown-item" data-sample="traefik">Traefik</button>
+          </div>
+        </div>
+        <button class="btn" id="clearBtn">Clear</button>
+      </div>
+    </div>
+    <textarea id="input" placeholder="Paste any config containing credentials — Frigate, Home Assistant, docker-compose.yml, .env files, Proxmox, WireGuard, Zigbee2MQTT, Traefik, and more.
+
+Everything stays in your browser. Nothing is sent anywhere."
+      spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+  </div>
+
+  <div class="diff-panel">
+    <div class="diff-toolbar">
+      <div class="diff-stat" id="diffStat">Awaiting input…</div>
+      <button class="btn" id="showAllBtn" title="Toggle showing only changed lines">Show only changes</button>
+      <button class="btn primary" id="copyBtn">Copy sanitized</button>
+      <button class="btn" id="downloadBtn">Download</button>
+    </div>
+    <div class="diff-header">
+      <div class="diff-side-label left">
+        <span class="badge-original">−</span>
+        <span>ORIGINAL</span>
+      </div>
+      <div class="diff-side-label right">
+        <span class="badge-sanitized">+</span>
+        <span>SANITIZED · safe to share</span>
+      </div>
+    </div>
+    <div class="diff-body" id="diffBody">
+      <div class="diff-empty">Paste your config above to see the side-by-side comparison…</div>
+    </div>
+  </div>
+
+  <div class="status-panel">
+    <div class="status-header">SCAN REPORT</div>
+    <div class="status-body">
+      <div class="stat-row">
+        <span class="stat-label">Lines processed</span>
+        <span class="stat-value" id="statLines">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Lines changed</span>
+        <span class="stat-value" id="statChanged">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Total redactions</span>
+        <span class="stat-value" id="statTotal">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Status</span>
+        <span class="stat-value ok" id="statStatus">Awaiting input</span>
+      </div>
+      <div class="findings-list" id="findingsList"></div>
+    </div>
+  </div>
+
+  <section class="trust-section">
+    <h2>How to verify nothing is sent</h2>
+    <div class="trust-grid">
+      <div class="trust-card">
+        <h3>Watch the network tab</h3>
+        <p>Open DevTools (F12), click <strong>Network</strong>, clear it, then paste your config. The Network tab stays empty. No requests are made — your config never leaves this browser.</p>
+      </div>
+      <div class="trust-card">
+        <h3>Disconnect the internet</h3>
+        <p>Turn off your WiFi after this page loads. The tool keeps working. That's the proof — everything runs as JavaScript in your browser, not on a server.</p>
+      </div>
+      <div class="trust-card">
+        <h3>Check storage yourself</h3>
+        <p>In DevTools console, run this and see an empty result:</p>
+        <code>Object.keys(localStorage)</code>
+        <p style="margin-top: 12px">Nothing is saved. Close the tab and your config is gone forever.</p>
+      </div>
+      <div class="trust-card">
+        <h3>Read the source</h3>
+        <p>The entire tool is one HTML file you can view. Right-click → View Source. The redaction logic is right there in plain JavaScript. Audit it yourself.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>sanitize · v0.3 · Built for homelabbers</div>
+    <div>
+      <a href="#" id="viewSourceLink">View source</a> ·
+      <a href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+const REDACTED = '<REDACTED>';
+
+const patterns = [
+  // ── URL-EMBEDDED CREDENTIALS ──────────────────────────────────────────
+  // RTSP / HTTP / database connection strings: scheme://user:pass@host
+  {
+    name: 'URL-embedded credentials (rtsp/http/db://user:pass@...)',
+    apply: (line) => line.replace(
+      /(\b(?:rtsp|rtsps|http|https|mqtt|mqtts|ftp|ftps|sftp|ssh|postgres|postgresql|mysql|mariadb|mongodb|mongodb\+srv|redis|rediss|amqp|amqps)\s*:\/\/)([^:\s/@"']+):([^@\s"']+)@/gi,
+      (m, scheme) => `${scheme}${REDACTED}:${REDACTED}@`
+    )
+  },
+
+  // URL query string credentials
+  {
+    name: 'URL query string credentials',
+    apply: (line) => line.replace(
+      /([?&])(password|passwd|pass|user|username|token|api_key|apikey|auth|secret|access_key|key)=([^&\s#"']+)/gi,
+      (m, sep, key) => `${sep}${key}=${REDACTED}`
+    )
+  },
+
+  // Frigate-specific: ffmpeg URL fragments
+  {
+    name: 'Frigate ffmpeg stream credential fragments',
+    apply: (line) => line.replace(
+      /(#)(user|password|pass|token)=([^#\s"']+)/gi,
+      (m, hash, key) => `${hash}${key}=${REDACTED}`
+    )
+  },
+
+  // ── ENV FILE / SHELL EXPORT FORMAT ─────────────────────────────────────
+  // KEY=VALUE for known sensitive keys (.env, docker-compose env, shell)
+  {
+    name: 'ENV/shell credential (KEY=value)',
+    apply: (line) => line.replace(
+      /^(\s*(?:export\s+)?)([A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|APIKEY|AUTH|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|CLIENT[_-]?SECRET|CREDENTIAL|PASSPHRASE|DB[_-]?PASS|DATABASE[_-]?URL|CONNECTION[_-]?STRING|WEBHOOK[_-]?URL|DSN)[A-Z0-9_]*)(\s*=\s*)(["']?)([^"'\n#]+)\4/gim,
+      (m, prefix, key, eq, quote, val) => {
+        if (!val.trim()) return m;
+        return `${prefix}${key}${eq}${quote}${REDACTED}${quote}`;
+      }
+    )
+  },
+
+  // ── YAML KEY:VALUE ──────────────────────────────────────────────────────
+  // Comprehensive list of credential keys in YAML/JSON format
+  // Allows prefixes/suffixes (POSTGRES_PASSWORD, MY_API_KEY, etc.)
+  {
+    name: 'YAML/JSON password/token field',
+    apply: (line) => line.replace(
+      /^(\s*"?)([A-Za-z0-9_]*(?:password|passwd|pass|secret|token|api_key|apikey|api-key|auth_token|access_token|refresh_token|client_secret|private_key|psk|preshared_key|pre_shared_key|passphrase|api_password|user_key|admin_password|root_password|webpassword|webhook_url|webhook_secret|encryption_key|network_key|mqtt_password|smtp_password|database_password|db_password|backup_password|bind_pw|root_token|app_password|app_secret|consumer_secret|consumer_key|oauth_token|bearer_token|session_secret|jwt_secret|cookie_secret|signing_key|tunnel_token|account_key|credential|sas_token)[A-Za-z0-9_]*)("?\s*[:=]\s*)(["']?)([^"'\n#]+)\4/gim,
+      (m, leading, key, sep, quote, val) => {
+        const trimmed = val.trim();
+        if (trimmed === '' || trimmed === '~' || trimmed === 'null') return m;
+        if (trimmed.startsWith('!secret')) return m;
+        return `${leading}${key}${sep}${quote}${REDACTED}${quote}`;
+      }
+    )
+  },
+
+  // YAML username field (separate so we can tag/count it)
+  // Only matches exact key names — avoids redacting things like USER_AGENT
+  {
+    name: 'YAML username field',
+    apply: (line) => line.replace(
+      /^(\s*"?)(user|username|login|admin_user)("?\s*[:=]\s*)(["']?)([^"'\n#]+)\4/gim,
+      (m, leading, key, sep, quote, val) => {
+        const trimmed = val.trim();
+        if (trimmed === '' || trimmed === '~' || trimmed === 'null') return m;
+        if (trimmed.startsWith('!secret')) return m;
+        return `${leading}${key}${sep}${quote}${REDACTED}${quote}`;
+      }
+    )
+  },
+
+  // ── PROXMOX-SPECIFIC ────────────────────────────────────────────────────
+  // Proxmox stores API tokens, SMTP creds, backup creds in colon-separated configs
+  {
+    name: 'Proxmox API token / secret',
+    apply: (line) => line.replace(
+      /^(\s*(?:tokenid|secret|password|fingerprint)\s+)(\S+)/gim,
+      (m, key, val) => {
+        if (val.startsWith(REDACTED)) return m;
+        return `${key}${REDACTED}`;
+      }
+    )
+  },
+
+  // ── WIREGUARD / TAILSCALE ───────────────────────────────────────────────
+  {
+    name: 'WireGuard PrivateKey / PresharedKey',
+    apply: (line) => line.replace(
+      /^(\s*)(PrivateKey|PresharedKey)(\s*=\s*)(\S+)/gim,
+      (m, indent, key, sep) => `${indent}${key}${sep}${REDACTED}`
+    )
+  },
+
+  // Tailscale auth keys (tskey-...)
+  {
+    name: 'Tailscale auth key',
+    apply: (line) => line.replace(
+      /\btskey-(?:auth-|client-|api-)?[a-zA-Z0-9-]{20,}\b/g,
+      REDACTED
+    )
+  },
+
+  // ── ZIGBEE2MQTT / Z-WAVE ────────────────────────────────────────────────
+  // Network keys (16 hex bytes, often as YAML array or string)
+  {
+    name: 'Zigbee/Z-Wave network key',
+    apply: (line) => line.replace(
+      /^(\s*(?:network_key|networkKey|S0_Legacy|S2_Unauthenticated|S2_Authenticated|S2_AccessControl)\s*[:=]\s*)(["']?)([^"'\n#]+)\2/gim,
+      (m, prefix, quote) => `${prefix}${quote}${REDACTED}${quote}`
+    )
+  },
+
+  // ── SSH PRIVATE KEYS / PEM BLOCKS ───────────────────────────────────────
+  {
+    name: 'PEM block content (private key/certificate body)',
+    apply: (line) => {
+      // If a line contains a BEGIN line, leave it; if it's content of a PEM block,
+      // we redact the obvious base64-y body lines that aren't BEGIN/END markers.
+      // Conservative: only redact lines that look like base64 data (40+ chars of base64).
+      if (/^-----(BEGIN|END)/.test(line)) return line;
+      return line.replace(
+        /^([A-Za-z0-9+/=]{40,})$/g,
+        REDACTED
+      );
+    }
+  },
+
+  // ── BASIC AUTH / NGINX ──────────────────────────────────────────────────
+  // Basic auth header values
+  {
+    name: 'HTTP Basic Auth header',
+    apply: (line) => line.replace(
+      /(Authorization\s*[:=]\s*["']?\s*(?:Basic|Bearer)\s+)([A-Za-z0-9+/=._-]+)/gi,
+      (m, prefix) => `${prefix}${REDACTED}`
+    )
+  },
+
+  // ── KNOWN API KEY FORMATS ───────────────────────────────────────────────
+  {
+    name: 'API key (sk-/ghp_/etc.)',
+    apply: (line) => line.replace(
+      /\b(sk-[a-zA-Z0-9_-]{20,}|sk-ant-[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{30,}|gho_[a-zA-Z0-9]{30,}|ghu_[a-zA-Z0-9]{30,}|ghs_[a-zA-Z0-9]{30,}|github_pat_[a-zA-Z0-9_]{30,}|xoxb-[a-zA-Z0-9-]{20,}|xoxp-[a-zA-Z0-9-]{20,}|xoxa-[a-zA-Z0-9-]{20,}|AIza[a-zA-Z0-9_-]{30,}|AKIA[A-Z0-9]{16}|ASIA[A-Z0-9]{16}|hf_[a-zA-Z0-9]{30,})\b/g,
+      REDACTED
+    )
+  },
+
+  // JWT-like tokens
+  {
+    name: 'JWT-like token',
+    apply: (line) => line.replace(
+      /\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b/g,
+      REDACTED
+    )
+  },
+
+  // ── CLOUDFLARE / DISCORD WEBHOOKS ──────────────────────────────────────
+  // Discord webhook URLs
+  {
+    name: 'Discord webhook URL',
+    apply: (line) => line.replace(
+      /https:\/\/(?:discord(?:app)?|ptb\.discord|canary\.discord)\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+/g,
+      `https://discord.com/api/webhooks/${REDACTED}/${REDACTED}`
+    )
+  },
+
+  // Slack webhook URLs
+  {
+    name: 'Slack webhook URL',
+    apply: (line) => line.replace(
+      /https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[A-Za-z0-9]+/g,
+      `https://hooks.slack.com/services/${REDACTED}`
+    )
+  },
+];
+
+function sanitize(input) {
+  if (!input) return { lines: [], findings: {}, total: 0, changed: 0 };
+
+  const findings = {};
+  let total = 0;
+  let changed = 0;
+
+  const inputLines = input.split('\n');
+  const result = inputLines.map(line => {
+    let current = line;
+    for (const pattern of patterns) {
+      const before = current;
+      current = pattern.apply(current);
+      if (before !== current) {
+        const beforeCount = (before.match(/<REDACTED>/g) || []).length;
+        const afterCount = (current.match(/<REDACTED>/g) || []).length;
+        const delta = afterCount - beforeCount;
+        if (delta > 0) {
+          findings[pattern.name] = (findings[pattern.name] || 0) + delta;
+          total += delta;
+        }
+      }
+    }
+    if (current !== line) changed++;
+    return { original: line, sanitized: current, changed: current !== line };
+  });
+
+  return { lines: result, findings, total, changed };
+}
+
+const $input = document.getElementById('input');
+const $diffBody = document.getElementById('diffBody');
+const $diffStat = document.getElementById('diffStat');
+const $statLines = document.getElementById('statLines');
+const $statChanged = document.getElementById('statChanged');
+const $statTotal = document.getElementById('statTotal');
+const $statStatus = document.getElementById('statStatus');
+const $findingsList = document.getElementById('findingsList');
+const $copyBtn = document.getElementById('copyBtn');
+const $downloadBtn = document.getElementById('downloadBtn');
+const $clearBtn = document.getElementById('clearBtn');
+const $showAllBtn = document.getElementById('showAllBtn');
+
+let showOnlyChanged = false;
+let lastResult = null;
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/* Build inline-highlighted HTML for both sides of a single diff line.
+   Walks the original and sanitized strings in sync, finding REDACTED
+   tokens to highlight as the swapped-in replacement. */
+function renderLineDiff(original, sanitized) {
+  if (original === sanitized) {
+    return { left: escapeHtml(original), right: escapeHtml(sanitized) };
+  }
+
+  let leftHtml = '';
+  let rightHtml = '';
+  let i = 0;
+  let j = 0;
+
+  while (j < sanitized.length) {
+    if (sanitized.startsWith(REDACTED, j)) {
+      const afterRedactedStart = j + REDACTED.length;
+      let nextRedactedJ = sanitized.indexOf(REDACTED, afterRedactedStart);
+      if (nextRedactedJ === -1) nextRedactedJ = sanitized.length;
+      const afterSegment = sanitized.slice(afterRedactedStart, nextRedactedJ);
+
+      let originalSecretEnd;
+      if (afterSegment === '') {
+        originalSecretEnd = original.length;
+      } else {
+        const found = original.indexOf(afterSegment, i);
+        originalSecretEnd = found === -1 ? original.length : found;
+      }
+
+      const secret = original.slice(i, originalSecretEnd);
+      leftHtml += `<span class="secret">${escapeHtml(secret)}</span>`;
+      rightHtml += `<span class="redacted">${escapeHtml(REDACTED)}</span>`;
+
+      i = originalSecretEnd;
+      j = afterRedactedStart;
+    } else {
+      leftHtml += escapeHtml(original.charAt(i));
+      rightHtml += escapeHtml(sanitized.charAt(j));
+      i++;
+      j++;
+    }
+  }
+
+  if (i < original.length) {
+    leftHtml += escapeHtml(original.slice(i));
+  }
+
+  return { left: leftHtml, right: rightHtml };
+}
+
+function buildLineHtml(side, lineNumber, content, isChanged) {
+  const changedClass = isChanged ? 'changed' : '';
+  return `<div class="diff-line ${changedClass} ${side}">
+    <div class="diff-line-num">${lineNumber}</div>
+    <div class="diff-line-content">${content || '&nbsp;'}</div>
+  </div>`;
+}
+
+function render() {
+  const text = $input.value;
+
+  if (!text.trim()) {
+    $diffBody.innerHTML = '<div class="diff-empty">Paste your config above to see the side-by-side comparison…</div>';
+    $diffStat.textContent = 'Awaiting input…';
+    $statLines.textContent = '0';
+    $statChanged.textContent = '0';
+    $statTotal.textContent = '0';
+    $statStatus.textContent = 'Awaiting input';
+    $statStatus.className = 'stat-value ok';
+    $findingsList.innerHTML = '';
+    lastResult = null;
+    return;
+  }
+
+  const result = sanitize(text);
+  lastResult = result;
+
+  let leftHtml = '';
+  let rightHtml = '';
+  result.lines.forEach((line, idx) => {
+    const lineNum = idx + 1;
+    if (showOnlyChanged && !line.changed) return;
+    const diff = renderLineDiff(line.original, line.sanitized);
+    leftHtml += buildLineHtml('left', lineNum, diff.left, line.changed);
+    rightHtml += buildLineHtml('right', lineNum, diff.right, line.changed);
+  });
+
+  if (showOnlyChanged && result.changed === 0) {
+    $diffBody.innerHTML = '<div class="diff-empty">No changes — your config has no detected credentials.</div>';
+  } else {
+    $diffBody.innerHTML = `
+      <div class="diff-side left">${leftHtml}</div>
+      <div class="diff-side right">${rightHtml}</div>
+    `;
+  }
+
+  $statLines.textContent = result.lines.length.toLocaleString();
+  $statChanged.textContent = result.changed.toLocaleString();
+  $statTotal.textContent = result.total.toLocaleString();
+
+  if (result.total === 0) {
+    $statStatus.textContent = 'No credentials detected';
+    $statStatus.className = 'stat-value ok';
+    $diffStat.innerHTML = `<span class="clean">✓ Clean</span> · <strong>${result.lines.length}</strong> lines processed`;
+  } else {
+    $statStatus.textContent = `${result.total} item${result.total === 1 ? '' : 's'} redacted`;
+    $statStatus.className = 'stat-value warn';
+    $diffStat.innerHTML = `<span class="changed">${result.changed}</span> changed · <strong>${result.total}</strong> redaction${result.total === 1 ? '' : 's'} · <strong>${result.lines.length}</strong> lines total`;
+  }
+
+  const entries = Object.entries(result.findings);
+  if (entries.length === 0) {
+    $findingsList.innerHTML = '';
+  } else {
+    $findingsList.innerHTML = entries
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => `
+        <div class="finding">
+          <span class="finding-count">${count}×</span>
+          <span class="finding-name">${escapeHtml(name)}</span>
+        </div>
+      `).join('');
+  }
+}
+
+$input.addEventListener('input', render);
+
+$showAllBtn.addEventListener('click', () => {
+  showOnlyChanged = !showOnlyChanged;
+  $showAllBtn.textContent = showOnlyChanged ? 'Show all lines' : 'Show only changes';
+  render();
+});
+
+function getSanitizedText() {
+  if (!lastResult) return '';
+  return lastResult.lines.map(l => l.sanitized).join('\n');
+}
+
+$copyBtn.addEventListener('click', async () => {
+  const text = getSanitizedText();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    $copyBtn.textContent = 'Copied ✓';
+    $copyBtn.classList.add('copied');
+    setTimeout(() => {
+      $copyBtn.textContent = 'Copy sanitized';
+      $copyBtn.classList.remove('copied');
+    }, 1600);
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    $copyBtn.textContent = 'Copied ✓';
+    setTimeout(() => $copyBtn.textContent = 'Copy sanitized', 1600);
+  }
+});
+
+$downloadBtn.addEventListener('click', () => {
+  const text = getSanitizedText();
+  if (!text) return;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sanitized.yml';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+$clearBtn.addEventListener('click', () => {
+  $input.value = '';
+  render();
+  $input.focus();
+});
+
+const samples = {
+  frigate: {
+    label: 'Frigate',
+    config: `mqtt:
+  enabled: true
+  host: 10.0.0.57
+  port: 1883
+  user: frigate
+  password: SuperSecret123
+  topic_prefix: frigate
+
+go2rtc:
+  streams:
+    doorbell:
+      - rtsp://admin:DoorbellPass@10.0.0.186/Preview_01_main
+      - ffmpeg:http://10.0.0.186/flv?port=1935&app=bcs&user=admin&password=DoorbellPass
+    front_cam:
+      - rtsp://admin:CameraPass99@10.0.0.190:554/cam/realmonitor?channel=1&subtype=0
+
+cameras:
+  doorbell:
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:DoorbellPass@10.0.0.186/Preview_01_sub
+          roles:
+            - detect
+`
+  },
+
+  homeAssistant: {
+    label: 'Home Assistant',
+    config: `homeassistant:
+  name: Home
+  latitude: !secret home_lat
+  longitude: !secret home_long
+
+http:
+  api_password: MyApiPassword2024
+  trusted_proxies:
+    - 192.168.1.0/24
+
+mqtt:
+  broker: 10.0.0.57
+  username: hassuser
+  password: HassMqtt!Pass
+
+notify:
+  - name: pushover
+    platform: pushover
+    api_key: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+    user_key: u1v2w3x4y5z6a7b8c9d0e1f2g3h4i5j6
+
+# secrets.yaml reference is safe and won't be redacted
+recorder:
+  db_url: !secret db_url
+
+# But inline credentials get caught
+weather:
+  api_key: sk-proj-abc123def456ghi789jkl012mno345pqr678
+`
+  },
+
+  dockerCompose: {
+    label: 'Docker Compose',
+    config: `version: '3.8'
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: SuperSecretDbPass!2024
+      POSTGRES_DB: appdata
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    command: redis-server --requirepass MyRedisPass99
+
+  app:
+    image: myapp:latest
+    environment:
+      - DATABASE_URL=postgres://admin:SuperSecretDbPass!2024@postgres:5432/appdata
+      - REDIS_URL=redis://default:MyRedisPass99@redis:6379
+      - JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4
+      - API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz1234567890
+      - SMTP_PASSWORD: NotificationPass2024
+    ports:
+      - "8080:8080"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=eyJhIjoiYWJjMTIzIiwidCI6ImRlZjQ1NiIsInMiOiJnaGk3ODkifQ==
+
+volumes:
+  pg_data:
+`
+  },
+
+  envFile: {
+    label: '.env file',
+    config: `# Database
+DATABASE_URL=postgres://dbuser:DbP@ssw0rd@db.example.com:5432/myapp
+DB_PASSWORD=DbP@ssw0rd
+DB_USER=dbuser
+
+# API Keys
+OPENAI_API_KEY=sk-proj-1234567890abcdefghijklmnopqrstuvwxyz
+ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890
+GITHUB_TOKEN=ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789
+HUGGINGFACE_TOKEN=hf_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789
+
+# Auth
+JWT_SECRET=mySuperSecretJwtSigningKey2024!
+SESSION_SECRET=anotherVerySecretSessionKey
+COOKIE_SECRET=cookieMonsterEatsCookies123
+
+# Webhook
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/123456789012345678/AbCdEfGhIjKlMnOpQrStUvWxYz1234567890
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
+
+# Cloud
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+GOOGLE_API_KEY=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI
+
+# Public values (won't be redacted)
+APP_NAME=MyApp
+APP_PORT=3000
+NODE_ENV=production
+`
+  },
+
+  proxmox: {
+    label: 'Proxmox',
+    config: `# /etc/pve/storage.cfg — backup storage
+pbs: backup-server
+        datastore main
+        server 10.0.0.50
+        content backup
+        fingerprint a1:b2:c3:d4:e5:f6:78:90:ab:cd:ef:12:34:56:78:90:ab:cd:ef:12:34:56:78:90:ab:cd:ef:12:34:56:78:90
+        username backupuser@pbs
+        password BackupSecret2024!
+
+# /etc/pve/datacenter.cfg
+email_from: admin@example.com
+notify: package-updates=always
+
+# API token entry
+tokenid PVEAuditor@pve!monitoring
+secret 12345678-abcd-efgh-ijkl-1234567890ab
+
+# SMTP for notifications
+[smtp]
+server: smtp.gmail.com
+port: 587
+username: alerts@example.com
+password: AppSpecificPass2024
+`
+  },
+
+  wireguard: {
+    label: 'WireGuard',
+    config: `[Interface]
+PrivateKey = aBcD1234efgH5678iJkL9012mNoP3456qRsT7890uVwXy=
+Address = 10.13.13.1/24
+ListenPort = 51820
+DNS = 1.1.1.1
+
+[Peer]
+# Phone
+PublicKey = ZzYy1234XxWw5678VvUu9012TtSs3456RrQq7890PpOoNn=
+PresharedKey = preshared1234567890abcdefghijklmnopqrstuvwxyz=
+AllowedIPs = 10.13.13.2/32
+
+[Peer]
+# Laptop
+PublicKey = AaBb9876CcDd5432EeFf1098GgHh7654IiJj3210KkLl=
+PresharedKey = anotherPSK1234567890abcdefghijklmnopqrstuvwx=
+AllowedIPs = 10.13.13.3/32
+`
+  },
+
+  zigbee2mqtt: {
+    label: 'Zigbee2MQTT',
+    config: `homeassistant: true
+permit_join: false
+
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://10.0.0.57
+  user: z2m_user
+  password: Z2mMqttPass2024
+
+serial:
+  port: /dev/ttyUSB0
+
+advanced:
+  network_key:
+    - 0x01
+    - 0x03
+    - 0x05
+    - 0x07
+    - 0x09
+    - 0x0B
+    - 0x0D
+    - 0x0F
+    - 0x00
+    - 0x02
+    - 0x04
+    - 0x06
+    - 0x08
+    - 0x0A
+    - 0x0C
+    - 0x0D
+  pan_id: 0x1a62
+  channel: 11
+
+frontend:
+  port: 8080
+  auth_token: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+`
+  },
+
+  traefik: {
+    label: 'Traefik',
+    config: `api:
+  dashboard: true
+  insecure: false
+
+entryPoints:
+  websecure:
+    address: ":443"
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@example.com
+      storage: /letsencrypt/acme.json
+      dnsChallenge:
+        provider: cloudflare
+        delayBeforeCheck: 30
+
+# Cloudflare DNS API
+# These get sourced from env vars normally, but sometimes inlined:
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+
+# In dynamic.yml:
+http:
+  middlewares:
+    auth:
+      basicAuth:
+        users:
+          - "admin:$apr1$abcdef$ghijklmnopqrstuvwxyz0123"
+
+# Env section often pasted alongside
+# CF_API_EMAIL=admin@example.com
+# CF_DNS_API_TOKEN=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789
+`
+  },
+};
+
+document.querySelectorAll('[data-sample]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const key = btn.dataset.sample;
+    if (samples[key]) {
+      $input.value = samples[key].config;
+      render();
+    }
+    document.querySelector('.dropdown')?.classList.remove('open');
+  });
+});
+
+// Dropdown toggle
+const $samplesBtn = document.getElementById('samplesBtn');
+const $dropdown = $samplesBtn.closest('.dropdown');
+$samplesBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  $dropdown.classList.toggle('open');
+});
+document.addEventListener('click', (e) => {
+  if (!$dropdown.contains(e.target)) {
+    $dropdown.classList.remove('open');
+  }
+});
+
+document.getElementById('viewSourceLink').addEventListener('click', (e) => {
+  e.preventDefault();
+  window.location.href = 'view-source:' + window.location.href;
+});
+
+/* Font size control */
+const FONT_MIN = 10;
+const FONT_MAX = 24;
+const FONT_DEFAULT = 13;
+let currentFontSize = FONT_DEFAULT;
+
+const $fontDecrease = document.getElementById('fontDecrease');
+const $fontIncrease = document.getElementById('fontIncrease');
+const $fontReset = document.getElementById('fontReset');
+const $fontSizeDisplay = document.getElementById('fontSizeDisplay');
+
+function applyFontSize(size) {
+  currentFontSize = Math.max(FONT_MIN, Math.min(FONT_MAX, size));
+  document.documentElement.style.setProperty('--code-size', currentFontSize + 'px');
+  $fontSizeDisplay.textContent = currentFontSize + 'px';
+  $fontDecrease.disabled = currentFontSize <= FONT_MIN;
+  $fontIncrease.disabled = currentFontSize >= FONT_MAX;
+}
+
+$fontDecrease.addEventListener('click', () => applyFontSize(currentFontSize - 1));
+$fontIncrease.addEventListener('click', () => applyFontSize(currentFontSize + 1));
+$fontReset.addEventListener('click', () => applyFontSize(FONT_DEFAULT));
+
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === '=' || e.key === '+') {
+    e.preventDefault();
+    applyFontSize(currentFontSize + 1);
+  } else if (e.key === '-') {
+    e.preventDefault();
+    applyFontSize(currentFontSize - 1);
+  } else if (e.key === '0') {
+    e.preventDefault();
+    applyFontSize(FONT_DEFAULT);
+  }
+});
+
+applyFontSize(FONT_DEFAULT);
+
+/* Network request counter */
+const baselineRequests = performance.getEntriesByType('resource').length;
+function updateReqCount() {
+  const current = performance.getEntriesByType('resource').length - baselineRequests;
+  document.getElementById('reqCount').textContent = current;
+}
+setInterval(updateReqCount, 1000);
+updateReqCount();
+
+render();
+</script>
+</body>
+</html>
